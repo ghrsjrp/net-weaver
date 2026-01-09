@@ -2,95 +2,130 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* NetTopo Design System - NOC-style dark theme */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Light mode - keeping for compatibility but dark is default */
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 220 20% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 220 20% 10%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 175 80% 40%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 220 15% 90%;
+    --secondary-foreground: 220 20% 20%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 220 15% 95%;
+    --muted-foreground: 220 10% 50%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 175 60% 90%;
+    --accent-foreground: 175 80% 25%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 220 15% 88%;
+    --input: 220 15% 88%;
+    --ring: 175 80% 40%;
 
     --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
+    --sidebar-background: 220 20% 97%;
+    --sidebar-foreground: 220 20% 25%;
+    --sidebar-primary: 175 80% 40%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 175 60% 95%;
+    --sidebar-accent-foreground: 175 80% 25%;
+    --sidebar-border: 220 15% 88%;
+    --sidebar-ring: 175 80% 40%;
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* NetTopo Custom tokens */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
 
-    --sidebar-primary: 240 5.9% 10%;
+    /* Status colors */
+    --status-online: 142 71% 45%;
+    --status-offline: 0 72% 51%;
+    --status-unknown: 220 10% 50%;
+    --status-error: 0 72% 51%;
 
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Graph colors */
+    --node-switch: 175 80% 40%;
+    --node-router: 262 83% 58%;
+    --node-unknown: 220 10% 50%;
+    --link-active: 175 60% 50%;
+    --link-inactive: 220 10% 40%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 222 25% 8%;
+    --foreground: 210 20% 92%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 222 20% 12%;
+    --card-foreground: 210 20% 92%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 222 20% 12%;
+    --popover-foreground: 210 20% 92%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 175 85% 45%;
+    --primary-foreground: 222 25% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 222 15% 18%;
+    --secondary-foreground: 210 20% 85%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 222 15% 16%;
+    --muted-foreground: 215 15% 55%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 175 40% 18%;
+    --accent-foreground: 175 85% 65%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 62% 45%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 222 15% 20%;
+    --input: 222 15% 20%;
+    --ring: 175 85% 45%;
+
+    --sidebar-background: 222 20% 10%;
+    --sidebar-foreground: 210 15% 70%;
+    --sidebar-primary: 175 85% 45%;
+    --sidebar-primary-foreground: 222 25% 8%;
+    --sidebar-accent: 175 40% 15%;
+    --sidebar-accent-foreground: 175 85% 65%;
+    --sidebar-border: 222 15% 18%;
+    --sidebar-ring: 175 85% 45%;
+
+    /* NetTopo Custom tokens - Dark */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 10%;
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
+
+    /* Status colors - Dark */
+    --status-online: 142 71% 50%;
+    --status-offline: 0 72% 55%;
+    --status-unknown: 220 10% 50%;
+    --status-error: 0 72% 55%;
+
+    /* Graph colors - Dark */
+    --node-switch: 175 85% 50%;
+    --node-router: 262 83% 65%;
+    --node-unknown: 220 10% 55%;
+    --link-active: 175 70% 55%;
+    --link-inactive: 220 10% 35%;
   }
 }
 
@@ -100,6 +135,150 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar for NOC feel */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-muted;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
+
+@layer components {
+  /* Status indicators */
+  .status-dot {
+    @apply w-2.5 h-2.5 rounded-full;
+  }
+
+  .status-dot-online {
+    @apply bg-[hsl(var(--status-online))] shadow-[0_0_8px_hsl(var(--status-online)/0.6)];
+  }
+
+  .status-dot-offline {
+    @apply bg-[hsl(var(--status-offline))] shadow-[0_0_8px_hsl(var(--status-offline)/0.6)];
+  }
+
+  .status-dot-unknown {
+    @apply bg-[hsl(var(--status-unknown))];
+  }
+
+  .status-dot-error {
+    @apply bg-[hsl(var(--status-error))] shadow-[0_0_8px_hsl(var(--status-error)/0.6)] animate-pulse;
+  }
+
+  /* Glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 15px hsl(var(--success) / 0.4);
+  }
+
+  /* Card variants */
+  .card-elevated {
+    @apply bg-card border border-border/50 shadow-lg;
+  }
+
+  .card-glass {
+    @apply bg-card/80 backdrop-blur-sm border border-border/30;
+  }
+
+  /* Monospace for technical data */
+  .font-mono-data {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+  }
+
+  /* Topology node styles */
+  .topo-node {
+    @apply transition-all duration-200 cursor-pointer;
+  }
+
+  .topo-node:hover {
+    filter: brightness(1.2);
+  }
+
+  .topo-link {
+    @apply transition-all duration-300;
+  }
+
+  /* Animated background grid for NOC feel */
+  .noc-grid {
+    background-image: 
+      linear-gradient(hsl(var(--border) / 0.3) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--border) / 0.3) 1px, transparent 1px);
+    background-size: 50px 50px;
+  }
+}
+
+@layer utilities {
+  /* Vendor-specific colors */
+  .vendor-huawei {
+    @apply text-red-500;
+  }
+
+  .vendor-juniper {
+    @apply text-green-500;
+  }
+
+  .vendor-mikrotik {
+    @apply text-blue-500;
+  }
+
+  .vendor-datacom {
+    @apply text-orange-500;
+  }
+
+  .vendor-cisco {
+    @apply text-sky-500;
+  }
+
+  /* Text glow for emphasis */
+  .text-glow-primary {
+    text-shadow: 0 0 10px hsl(var(--primary) / 0.5);
+  }
+
+  /* Fade animations */
+  .fade-in {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Pulse animation for active elements */
+  .pulse-glow {
+    animation: pulseGlow 2s infinite;
+  }
+
+  @keyframes pulseGlow {
+    0%, 100% {
+      box-shadow: 0 0 5px hsl(var(--primary) / 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.6);
+    }
   }
 }
