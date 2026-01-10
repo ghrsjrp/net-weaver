@@ -1,6 +1,6 @@
 import { NetworkDevice } from '@/types/network';
 import { cn } from '@/lib/utils';
-import { Server, MapPin, Clock, MoreVertical, Trash2, Edit, Play } from 'lucide-react';
+import { Server, MapPin, Clock, MoreVertical, Trash2, Edit, Play, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -17,6 +17,7 @@ interface DeviceCardProps {
   onEdit?: (device: NetworkDevice) => void;
   onDelete?: (device: NetworkDevice) => void;
   onCollect?: (device: NetworkDevice) => void;
+  isCollecting?: boolean;
 }
 
 const statusStyles = {
@@ -35,25 +36,33 @@ const vendorColors: Record<string, string> = {
   other: 'border-l-gray-500',
 };
 
-export function DeviceCard({ device, onEdit, onDelete, onCollect }: DeviceCardProps) {
+export function DeviceCard({ device, onEdit, onDelete, onCollect, isCollecting }: DeviceCardProps) {
   return (
     <div
       className={cn(
         'group rounded-xl border border-border bg-card p-5 transition-all duration-200',
         'hover:shadow-lg hover:border-primary/30 border-l-4',
-        vendorColors[device.vendor] || vendorColors.other
+        vendorColors[device.vendor] || vendorColors.other,
+        isCollecting && 'ring-2 ring-primary/50 animate-pulse'
       )}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted">
-            <Server className="h-6 w-6 text-muted-foreground" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted relative">
+            {isCollecting ? (
+              <Loader2 className="h-6 w-6 text-primary animate-spin" />
+            ) : (
+              <Server className="h-6 w-6 text-muted-foreground" />
+            )}
           </div>
           
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-foreground">{device.name}</h3>
               <div className={cn('status-dot', statusStyles[device.status])} />
+              {isCollecting && (
+                <span className="text-xs text-primary font-medium">Coletando...</span>
+              )}
             </div>
             
             <p className="text-sm text-muted-foreground font-mono-data">
@@ -73,14 +82,19 @@ export function DeviceCard({ device, onEdit, onDelete, onCollect }: DeviceCardPr
               variant="ghost"
               size="icon"
               className="opacity-0 group-hover:opacity-100 transition-opacity"
+              disabled={isCollecting}
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onCollect?.(device)}>
-              <Play className="h-4 w-4 mr-2" />
-              Coletar Dados
+            <DropdownMenuItem onClick={() => onCollect?.(device)} disabled={isCollecting}>
+              {isCollecting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isCollecting ? 'Coletando...' : 'Coletar Dados'}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEdit?.(device)}>
               <Edit className="h-4 w-4 mr-2" />

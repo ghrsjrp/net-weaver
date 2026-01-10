@@ -3,6 +3,7 @@ import { Header } from '@/components/layout/Header';
 import { DeviceCard } from '@/components/devices/DeviceCard';
 import { DeviceForm } from '@/components/devices/DeviceForm';
 import { useDevices, useCreateDevice, useUpdateDevice, useDeleteDevice } from '@/hooks/useDevices';
+import { useCollectDevice, useCollectAllDevices } from '@/hooks/useCollection';
 import { NetworkDevice, DeviceFormData } from '@/types/network';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,18 +24,21 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Search, Loader2, Server } from 'lucide-react';
+import { Plus, Search, Loader2, Server, RefreshCw } from 'lucide-react';
 
 export default function Devices() {
   const { data: devices, isLoading } = useDevices();
   const createDevice = useCreateDevice();
   const updateDevice = useUpdateDevice();
   const deleteDevice = useDeleteDevice();
+  const collectDevice = useCollectDevice();
+  const collectAllDevices = useCollectAllDevices();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingDevice, setEditingDevice] = useState<NetworkDevice | undefined>();
   const [deletingDevice, setDeletingDevice] = useState<NetworkDevice | undefined>();
+  const [collectingDeviceId, setCollectingDeviceId] = useState<string | null>(null);
 
   const filteredDevices = devices?.filter((device) => {
     const query = searchQuery.toLowerCase();
@@ -68,9 +72,19 @@ export default function Devices() {
     }
   };
 
-  const handleCollect = (device: NetworkDevice) => {
-    // TODO: Implementar coleta de dados
-    console.log('Coletar dados de:', device.name);
+  const handleCollect = async (device: NetworkDevice) => {
+    setCollectingDeviceId(device.id);
+    try {
+      await collectDevice.mutateAsync({ deviceId: device.id });
+    } finally {
+      setCollectingDeviceId(null);
+    }
+  };
+
+  const handleCollectAll = async () => {
+    if (!devices || devices.length === 0) return;
+    const deviceIds = devices.map(d => d.id);
+    await collectAllDevices.mutateAsync(deviceIds);
   };
 
   return (
@@ -79,10 +93,27 @@ export default function Devices() {
         title="Dispositivos"
         description="Gerencie os dispositivos de rede cadastrados"
         actions={
-          <Button onClick={() => setIsFormOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Novo Dispositivo
-          </Button>
+          <div className="flex items-center gap-2">
+            {devices && devices.length > 0 && (
+              <Button 
+                variant="outline" 
+                onClick={handleCollectAll}
+                disabled={collectAllDevices.isPending}
+                className="gap-2"
+              >
+                {collectAllDevices.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Coletar Todos
+              </Button>
+            )}
+            <Button onClick={() => setIsFormOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Novo Dispositivo
+            </Button>
+          </div>
         }
       />
 
@@ -112,6 +143,7 @@ export default function Devices() {
                 onEdit={handleEdit}
                 onDelete={setDeletingDevice}
                 onCollect={handleCollect}
+                isCollecting={collectingDeviceId === device.id}
               />
             ))}
           </div>
