@@ -128,7 +128,7 @@ export function useSaveTopologySnapshot() {
         .insert([{
           name,
           description,
-          topology_data: topology as unknown as Record<string, unknown>,
+          topology_data: JSON.parse(JSON.stringify(topology)),
           drawio_xml: drawioXml,
         }])
         .select()
@@ -167,9 +167,20 @@ export function useCreateManualLink() {
   
   return useMutation({
     mutationFn: async (link: Omit<TopologyLink, 'id' | 'created_at' | 'updated_at'>) => {
+      const insertData = {
+        source_device_id: link.source_device_id,
+        source_interface: link.source_interface,
+        target_device_id: link.target_device_id,
+        target_interface: link.target_interface,
+        link_type: link.link_type,
+        bandwidth_mbps: link.bandwidth_mbps,
+        status: link.status,
+        metadata: JSON.parse(JSON.stringify(link.metadata)),
+      };
+      
       const { data, error } = await supabase
         .from('topology_links')
-        .insert([link])
+        .insert([insertData])
         .select()
         .single();
       
