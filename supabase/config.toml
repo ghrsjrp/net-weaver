@@ -1,1 +1,4 @@
 project_id = "noyquzhlncvpxhghqtay"
+
+[functions.ssh-collector]
+verify_jwt = false
