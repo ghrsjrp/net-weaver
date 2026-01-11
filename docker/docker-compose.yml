@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: nettopo-db
+    environment:
+      POSTGRES_DB: nettopo
+      POSTGRES_USER: nettopo
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-nettopo_secure_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../scripts/setup-database.sh:/docker-entrypoint-initdb.d/init.sh
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nettopo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: nettopo-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      NODE_ENV: production
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: nettopo
+      DATABASE_USER: nettopo
+      DATABASE_PASSWORD: ${DB_PASSWORD:-nettopo_secure_password}
+      SSH_TIMEOUT: 30000
+      CORS_ORIGIN: http://localhost
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.frontend
+    container_name: nettopo-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
