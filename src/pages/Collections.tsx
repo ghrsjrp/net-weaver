@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useDevices } from '@/hooks/useDevices';
+import { useCollectAllDevices, useCollectDevice } from '@/hooks/useCollection';
 import { CollectionStatus } from '@/types/network';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   Table, 
@@ -15,6 +18,22 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { CheckCircle2, XCircle, Clock, Loader2, Play, History } from 'lucide-react';
 
 interface CollectionRecord {
@@ -36,6 +55,14 @@ const statusConfig: Record<CollectionStatus, { icon: typeof CheckCircle2; varian
 };
 
 export default function Collections() {
+  const { data: devices } = useDevices();
+  const collectDevice = useCollectDevice();
+  const collectAllDevices = useCollectAllDevices();
+  
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('all');
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(['lldp', 'ospf', 'interfaces', 'system']);
+
   const { data: collections, isLoading } = useQuery({
     queryKey: ['collections'],
     queryFn: async () => {
@@ -47,14 +74,13 @@ export default function Collections() {
       
       if (collectionsError) throw collectionsError;
       
-      // Buscar nomes dos dispositivos
       const deviceIds = [...new Set((collectionsData || []).map(c => c.device_id))];
-      const { data: devices } = await supabase
+      const { data: devicesData } = await supabase
         .from('network_devices')
         .select('id, name')
         .in('id', deviceIds);
       
-      const deviceMap = new Map((devices || []).map(d => [d.id, d.name]));
+      const deviceMap = new Map((devicesData || []).map(d => [d.id, d.name]));
       
       return (collectionsData || []).map(c => ({
         ...c,
@@ -63,13 +89,41 @@ export default function Collections() {
     },
   });
 
+  const handleStartCollection = async () => {
+    if (selectedDeviceId === 'all') {
+      if (devices && devices.length > 0) {
+        await collectAllDevices.mutateAsync(devices.map(d => d.id));
+      }
+    } else {
+      await collectDevice.mutateAsync({ 
+        deviceId: selectedDeviceId,
+        collectionTypes: selectedTypes,
+      });
+    }
+    setIsDialogOpen(false);
+  };
+
+  const toggleCollectionType = (type: string) => {
+    setSelectedTypes(prev => 
+      prev.includes(type) 
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
+    );
+  };
+
+  const isCollecting = collectDevice.isPending || collectAllDevices.isPending;
+
   return (
     <div className="min-h-screen">
       <Header
         title="Histórico de Coletas"
         description="Acompanhe as execuções de descoberta de topologia"
         actions={
-          <Button className="gap-2">
+          <Button 
+            className="gap-2" 
+            onClick={() => setIsDialogOpen(true)}
+            disabled={!devices || devices.length === 0}
+          >
             <Play className="h-4 w-4" />
             Nova Coleta
           </Button>
@@ -151,13 +205,84 @@ export default function Collections() {
             <p className="text-sm text-muted-foreground max-w-sm mb-4">
               Execute coletas nos dispositivos para descobrir a topologia da rede
             </p>
-            <Button className="gap-2">
+            <Button 
+              className="gap-2" 
+              onClick={() => setIsDialogOpen(true)}
+              disabled={!devices || devices.length === 0}
+            >
               <Play className="h-4 w-4" />
               Iniciar Coleta
             </Button>
           </div>
         )}
       </div>
+
+      {/* Dialog para Nova Coleta */}
+      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Coleta</DialogTitle>
+            <DialogDescription>
+              Selecione o dispositivo e os tipos de coleta a executar
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Dispositivo</Label>
+              <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione um dispositivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os dispositivos</SelectItem>
+                  {devices?.map((device) => (
+                    <SelectItem key={device.id} value={device.id}>
+                      {device.name} ({device.ip_address})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Tipos de Coleta</Label>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { id: 'lldp', label: 'LLDP Neighbors' },
+                  { id: 'ospf', label: 'OSPF Neighbors' },
+                  { id: 'interfaces', label: 'Interfaces' },
+                  { id: 'system', label: 'System Info' },
+                ].map((type) => (
+                  <div key={type.id} className="flex items-center space-x-2">
+                    <Checkbox 
+                      id={type.id}
+                      checked={selectedTypes.includes(type.id)}
+                      onCheckedChange={() => toggleCollectionType(type.id)}
+                    />
+                    <Label htmlFor={type.id} className="text-sm font-normal cursor-pointer">
+                      {type.label}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleStartCollection} 
+              disabled={isCollecting || selectedTypes.length === 0}
+            >
+              {isCollecting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {selectedDeviceId === 'all' ? 'Coletar Todos' : 'Iniciar Coleta'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
