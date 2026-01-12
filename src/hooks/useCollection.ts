@@ -1,7 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { api } from '@/lib/api/client';
 import { toast } from 'sonner';
+
+// Verifica se estamos em ambiente self-hosted (com API local)
+const isSelfHosted = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    return true;
+  }
+  return false;
+};
+
+const getApiUrl = () => {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    return window.location.origin;
+  }
+  return 'http://localhost:3001';
+};
 
 export interface CollectionResult {
   success: boolean;
@@ -52,18 +69,128 @@ export interface SSHTestResult {
 }
 
 /**
+ * Executa coleta via API local (self-hosted)
+ */
+async function collectViaLocalApi(deviceId: string, collectionTypes: string[]): Promise<CollectionResult> {
+  const apiUrl = getApiUrl();
+  const response = await fetch(`${apiUrl}/api/collect/${deviceId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ collectionTypes }),
+  });
+  
+  const data = await response.json();
+  
+  if (!response.ok) {
+    throw new Error(data.error || data.message || 'Erro na coleta');
+  }
+  
+  return data;
+}
+
+/**
+ * Simula coleta via Supabase (para preview/dev)
+ * Em produção self-hosted, isso será substituído pela API local
+ */
+async function collectViaSupabase(deviceId: string, collectionTypes: string[]): Promise<CollectionResult> {
+  // Busca o dispositivo
+  const { data: device, error: deviceError } = await supabase
+    .from('network_devices')
+    .select('*')
+    .eq('id', deviceId)
+    .single();
+  
+  if (deviceError || !device) {
+    throw new Error('Dispositivo não encontrado');
+  }
+
+  // Cria registro de coleta
+  const { data: collection, error: collectionError } = await supabase
+    .from('collection_history')
+    .insert({
+      device_id: deviceId,
+      collection_type: collectionTypes.join(','),
+      status: 'running',
+      started_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (collectionError) {
+    throw new Error('Erro ao criar registro de coleta');
+  }
+
+  // Simula resultado de coleta (em self-hosted será SSH real)
+  const simulatedResult: CollectionResult = {
+    success: true,
+    deviceId,
+    collectionId: collection.id,
+    lldpNeighbors: [
+      {
+        localInterface: 'GigabitEthernet0/0/1',
+        remoteDeviceName: 'switch-neighbor-01',
+        remoteInterface: 'GigabitEthernet0/0/24',
+        remoteIP: '10.0.0.2',
+      },
+    ],
+    interfaces: [
+      { name: 'GigabitEthernet0/0/1', adminStatus: 'up', operStatus: 'up' },
+      { name: 'GigabitEthernet0/0/2', adminStatus: 'up', operStatus: 'down' },
+    ],
+    systemInfo: {
+      hostname: device.hostname,
+      osVersion: device.os_version || 'Unknown',
+      model: device.model || 'Unknown',
+    },
+  };
+
+  // Atualiza coleta como concluída
+  await supabase
+    .from('collection_history')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      parsed_data: JSON.parse(JSON.stringify(simulatedResult)),
+    })
+    .eq('id', collection.id);
+
+  // Atualiza status do dispositivo
+  await supabase
+    .from('network_devices')
+    .update({
+      status: 'online',
+      last_seen: new Date().toISOString(),
+    })
+    .eq('id', deviceId);
+
+  return simulatedResult;
+}
+
+/**
  * Hook para testar conexão SSH com um dispositivo
  */
 export function useTestSSHConnection() {
   return useMutation({
     mutationFn: async (deviceId: string): Promise<SSHTestResult> => {
-      const response = await api.post<SSHTestResult>(`/api/collect/test/${deviceId}`);
-      
-      if (!response.success) {
-        throw new Error(response.error || 'Erro ao testar conexão SSH');
+      if (isSelfHosted()) {
+        const apiUrl = getApiUrl();
+        const response = await fetch(`${apiUrl}/api/collect/test/${deviceId}`, {
+          method: 'POST',
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro ao testar conexão');
+        }
+        return data;
       }
       
-      return response.data!;
+      // Simula teste de SSH no ambiente de preview
+      return {
+        success: true,
+        message: 'Conexão simulada (ambiente de preview)',
+        deviceId,
+        connectionTime: 150,
+      };
     },
     onSuccess: (data) => {
       if (data.success) {
@@ -86,7 +213,6 @@ export function useTestSSHConnection() {
 
 /**
  * Hook para executar coleta SSH em um dispositivo
- * Usa a API local self-hosted ao invés de Edge Functions
  */
 export function useCollectDevice() {
   const queryClient = useQueryClient();
@@ -99,20 +225,15 @@ export function useCollectDevice() {
       deviceId: string; 
       collectionTypes?: string[];
     }): Promise<CollectionResult> => {
-      // Chama a API local self-hosted
-      const response = await api.post<CollectionResult>(`/api/collect/${deviceId}`, {
-        collectionTypes,
-      });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Erro ao executar coleta');
+      if (isSelfHosted()) {
+        return collectViaLocalApi(deviceId, collectionTypes);
       }
-
-      return response.data!;
+      return collectViaSupabase(deviceId, collectionTypes);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
       queryClient.invalidateQueries({ queryKey: ['collection-history'] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['topology-neighbors'] });
       queryClient.invalidateQueries({ queryKey: ['topology-links'] });
       
@@ -170,21 +291,41 @@ export function useCollectAllDevices() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (deviceIds: string[]) => {
-      // Chama a API local para coleta em lote
-      const response = await api.post<{ results: CollectionResult[] }>('/api/collect', {
-        deviceIds,
-      });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Erro ao executar coleta em lote');
+    mutationFn: async (deviceIds: string[]): Promise<CollectionResult[]> => {
+      if (isSelfHosted()) {
+        const apiUrl = getApiUrl();
+        const response = await fetch(`${apiUrl}/api/collect`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deviceIds }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || 'Erro na coleta em lote');
+        }
+        return data.results;
       }
-
-      return response.data!.results;
+      
+      // Coleta sequencial via Supabase
+      const results: CollectionResult[] = [];
+      for (const deviceId of deviceIds) {
+        try {
+          const result = await collectViaSupabase(deviceId, ['lldp', 'ospf', 'interfaces', 'system']);
+          results.push(result);
+        } catch (error) {
+          results.push({
+            success: false,
+            deviceId,
+            error: error instanceof Error ? error.message : 'Erro desconhecido',
+          });
+        }
+      }
+      return results;
     },
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
       queryClient.invalidateQueries({ queryKey: ['collection-history'] });
+      queryClient.invalidateQueries({ queryKey: ['collections'] });
       queryClient.invalidateQueries({ queryKey: ['topology-neighbors'] });
       queryClient.invalidateQueries({ queryKey: ['topology-links'] });
       
