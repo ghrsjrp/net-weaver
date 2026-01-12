@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { api } from '@/lib/api/client';
 import { toast } from 'sonner';
 
 export interface CollectionResult {
@@ -43,8 +44,49 @@ export interface CollectionHistory {
   parsed_data: Record<string, unknown>;
 }
 
+export interface SSHTestResult {
+  success: boolean;
+  message: string;
+  deviceId: string;
+  connectionTime?: number;
+}
+
+/**
+ * Hook para testar conexão SSH com um dispositivo
+ */
+export function useTestSSHConnection() {
+  return useMutation({
+    mutationFn: async (deviceId: string): Promise<SSHTestResult> => {
+      const response = await api.post<SSHTestResult>(`/api/collect/test/${deviceId}`);
+      
+      if (!response.success) {
+        throw new Error(response.error || 'Erro ao testar conexão SSH');
+      }
+      
+      return response.data!;
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        toast.success('Conexão SSH bem-sucedida', {
+          description: `Conectado em ${data.connectionTime}ms`,
+        });
+      } else {
+        toast.error('Falha na conexão SSH', {
+          description: data.message,
+        });
+      }
+    },
+    onError: (error: Error) => {
+      toast.error('Erro ao testar SSH', {
+        description: error.message,
+      });
+    },
+  });
+}
+
 /**
  * Hook para executar coleta SSH em um dispositivo
+ * Usa a API local self-hosted ao invés de Edge Functions
  */
 export function useCollectDevice() {
   const queryClient = useQueryClient();
@@ -57,15 +99,16 @@ export function useCollectDevice() {
       deviceId: string; 
       collectionTypes?: string[];
     }): Promise<CollectionResult> => {
-      const { data, error } = await supabase.functions.invoke('ssh-collector', {
-        body: { deviceId, collectionTypes },
+      // Chama a API local self-hosted
+      const response = await api.post<CollectionResult>(`/api/collect/${deviceId}`, {
+        collectionTypes,
       });
 
-      if (error) {
-        throw new Error(error.message || 'Erro ao executar coleta');
+      if (!response.success) {
+        throw new Error(response.error || 'Erro ao executar coleta');
       }
 
-      return data as CollectionResult;
+      return response.data!;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
@@ -124,27 +167,20 @@ export function useCollectionHistory(deviceId?: string) {
  * Hook para executar coleta em múltiplos dispositivos
  */
 export function useCollectAllDevices() {
-  const collectDevice = useCollectDevice();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (deviceIds: string[]) => {
-      const results: CollectionResult[] = [];
-      
-      for (const deviceId of deviceIds) {
-        try {
-          const result = await collectDevice.mutateAsync({ deviceId });
-          results.push(result);
-        } catch (error) {
-          results.push({
-            success: false,
-            deviceId,
-            error: error instanceof Error ? error.message : 'Erro desconhecido',
-          });
-        }
+      // Chama a API local para coleta em lote
+      const response = await api.post<{ results: CollectionResult[] }>('/api/collect', {
+        deviceIds,
+      });
+
+      if (!response.success) {
+        throw new Error(response.error || 'Erro ao executar coleta em lote');
       }
-      
-      return results;
+
+      return response.data!.results;
     },
     onSuccess: (results) => {
       queryClient.invalidateQueries({ queryKey: ['devices'] });
@@ -168,6 +204,11 @@ export function useCollectAllDevices() {
           description: `${failCount} dispositivos falharam`,
         });
       }
+    },
+    onError: (error: Error) => {
+      toast.error('Erro na coleta em lote', {
+        description: error.message,
+      });
     },
   });
 }

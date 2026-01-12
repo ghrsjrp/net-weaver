@@ -299,36 +299,106 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
   }
 });
 
-// Collect from all devices
+// Collect from multiple devices (batch)
 router.post('/', async (req: Request, res: Response) => {
-  const { collectionTypes = ['lldp', 'ospf', 'interfaces', 'system'] } = req.body;
+  const { deviceIds, collectionTypes = ['lldp', 'ospf', 'interfaces', 'system'] } = req.body;
 
   try {
-    const devices = await query<NetworkDevice>('SELECT id FROM network_devices');
+    // Se deviceIds não fornecido, coletar de todos
+    let targetDevices: NetworkDevice[];
+    
+    if (deviceIds && Array.isArray(deviceIds) && deviceIds.length > 0) {
+      targetDevices = await query<NetworkDevice>(
+        'SELECT * FROM network_devices WHERE id = ANY($1)',
+        [deviceIds]
+      );
+    } else {
+      targetDevices = await query<NetworkDevice>('SELECT * FROM network_devices');
+    }
     
     const results: CollectionResult[] = [];
     
-    for (const device of devices) {
+    for (const device of targetDevices) {
+      const historyId = uuidv4();
+      const startedAt = new Date().toISOString();
+      
+      // Skip devices without SSH credentials
+      if (!device.ssh_username || !device.ssh_password_encrypted) {
+        results.push({
+          success: false,
+          deviceId: device.id,
+          error: 'Credenciais SSH não configuradas',
+          collectedAt: startedAt,
+        });
+        continue;
+      }
+
       try {
-        // Make internal request to single device collection
-        // In production, you might want to use a queue system
-        const response = await fetch(
-          `http://localhost:${process.env.PORT || 3001}/api/collect/${device.id}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ collectionTypes }),
-          }
+        // Insert collection record
+        await query(
+          `INSERT INTO collection_history 
+            (id, device_id, collection_type, status, started_at, created_at)
+           VALUES ($1, $2, $3, 'running', $4, $4)`,
+          [historyId, device.id, collectionTypes.join(','), startedAt]
         );
+
+        const ssh = new SSHService();
+        const parser = getVendorParser(device.vendor);
         
-        const result = await response.json();
+        await ssh.connect({
+          host: String(device.ip_address),
+          port: device.ssh_port || 22,
+          username: device.ssh_username,
+          password: device.ssh_password_encrypted,
+        });
+
+        const result: CollectionResult = {
+          success: true,
+          deviceId: device.id,
+          collectedAt: startedAt,
+        };
+
+        // Execute LLDP if requested
+        if (collectionTypes.includes('lldp')) {
+          const lldpResult = await ssh.executeCommand(parser.commands.getLLDPNeighbors);
+          if (lldpResult.success) {
+            result.lldpNeighbors = parser.parseLLDPNeighbors(lldpResult.output);
+          }
+        }
+
+        ssh.disconnect();
+
+        // Update device status
+        await query(
+          `UPDATE network_devices SET status = 'online', last_seen = $1 WHERE id = $2`,
+          [new Date().toISOString(), device.id]
+        );
+
+        // Update collection as completed
+        await query(
+          `UPDATE collection_history SET status = 'completed', completed_at = $1 WHERE id = $2`,
+          [new Date().toISOString(), historyId]
+        );
+
         results.push(result);
+
       } catch (error: any) {
+        // Update collection as failed
+        await query(
+          `UPDATE collection_history SET status = 'failed', completed_at = $1, error_message = $2 WHERE id = $3`,
+          [new Date().toISOString(), error.message, historyId]
+        );
+
+        await query(
+          `UPDATE network_devices SET status = 'error' WHERE id = $1`,
+          [device.id]
+        );
+
         results.push({
           success: false,
           deviceId: device.id,
           error: error.message,
-          collectedAt: new Date().toISOString(),
+          collectedAt: startedAt,
         });
       }
     }
@@ -337,13 +407,13 @@ router.post('/', async (req: Request, res: Response) => {
     const failed = results.filter(r => !r.success).length;
 
     res.json({
-      message: `Collection completed: ${successful} successful, ${failed} failed`,
+      message: `Coleta concluída: ${successful} sucesso, ${failed} falhas`,
       results,
     });
 
   } catch (error: any) {
     console.error('Collect all error:', error);
-    res.status(500).json({ error: 'Failed to start collection' });
+    res.status(500).json({ error: 'Falha ao iniciar coleta em lote' });
   }
 });
 
@@ -387,20 +457,34 @@ router.post('/test/:deviceId', async (req: Request, res: Response) => {
     );
 
     if (!device) {
-      return res.status(404).json({ error: 'Device not found' });
+      return res.status(404).json({ 
+        success: false,
+        message: 'Dispositivo não encontrado',
+        deviceId,
+      });
+    }
+
+    if (!device.ssh_username || !device.ssh_password_encrypted) {
+      return res.json({ 
+        success: false,
+        message: 'Credenciais SSH não configuradas',
+        deviceId,
+      });
     }
 
     const ssh = new SSHService();
     const parser = getVendorParser(device.vendor);
+    const startTime = Date.now();
 
     try {
       await ssh.connect({
         host: String(device.ip_address),
         port: device.ssh_port || 22,
-        username: device.ssh_username || 'admin',
-        password: device.ssh_password_encrypted || '',
+        username: device.ssh_username,
+        password: device.ssh_password_encrypted,
       });
 
+      const connectionTime = Date.now() - startTime;
       const result = await ssh.executeCommand(parser.commands.testConnection);
       ssh.disconnect();
 
@@ -414,7 +498,9 @@ router.post('/test/:deviceId', async (req: Request, res: Response) => {
 
       res.json({
         success: true,
-        message: 'SSH connection successful',
+        message: 'Conexão SSH bem-sucedida',
+        deviceId,
+        connectionTime,
         output: result.output,
       });
 
@@ -429,16 +515,20 @@ router.post('/test/:deviceId', async (req: Request, res: Response) => {
         [new Date().toISOString(), deviceId]
       );
 
-      res.status(500).json({
+      res.json({
         success: false,
-        message: 'SSH connection failed',
-        error: sshError.message,
+        message: sshError.message || 'Falha na conexão SSH',
+        deviceId,
       });
     }
 
   } catch (error: any) {
     console.error('Test connection error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false,
+      message: error.message,
+      deviceId,
+    });
   }
 });
 
