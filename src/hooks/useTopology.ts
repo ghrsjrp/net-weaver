@@ -5,6 +5,7 @@ import { useDevices } from './useDevices';
 import { generateTopologyData, calculateLayout } from '@/lib/topology/normalizer';
 import { generateDrawioXML, generateTopologyJSON, downloadFile } from '@/lib/topology/exporter';
 import { toast } from 'sonner';
+import { detectSelfHosted, isSelfHosted, getApiUrl } from '@/lib/api/client';
 
 function mapDatabaseLink(data: Record<string, unknown>): TopologyLink {
   return {
@@ -53,6 +54,16 @@ export function useTopologyLinks() {
   return useQuery({
     queryKey: ['topology-links'],
     queryFn: async () => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/links`);
+        if (!response.ok) throw new Error('Falha ao buscar links');
+        const data = await response.json();
+        return data.map((d: Record<string, unknown>) => mapDatabaseLink(d));
+      }
+      
       const { data, error } = await supabase
         .from('topology_links')
         .select('*');
@@ -67,6 +78,16 @@ export function useTopologyNeighbors() {
   return useQuery({
     queryKey: ['topology-neighbors'],
     queryFn: async () => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/neighbors`);
+        if (!response.ok) throw new Error('Falha ao buscar vizinhos');
+        const data = await response.json();
+        return data.map((d: Record<string, unknown>) => mapDatabaseNeighbor(d));
+      }
+      
       const { data, error } = await supabase
         .from('topology_neighbors')
         .select('*');
@@ -101,6 +122,16 @@ export function useTopologySnapshots() {
   return useQuery({
     queryKey: ['topology-snapshots'],
     queryFn: async () => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/snapshots`);
+        if (!response.ok) throw new Error('Falha ao buscar snapshots');
+        const data = await response.json();
+        return data.map((d: Record<string, unknown>) => mapDatabaseSnapshot(d));
+      }
+      
       const { data, error } = await supabase
         .from('topology_snapshots')
         .select('*')
@@ -121,16 +152,30 @@ export function useSaveTopologySnapshot() {
       description?: string; 
       topology: TopologyData 
     }) => {
+      await detectSelfHosted();
+      
       const drawioXml = generateDrawioXML(topology);
+      const snapshotData = {
+        name,
+        description,
+        topology_data: JSON.parse(JSON.stringify(topology)),
+        drawio_xml: drawioXml,
+      };
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/snapshots`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(snapshotData),
+        });
+        if (!response.ok) throw new Error('Erro ao salvar snapshot');
+        return mapDatabaseSnapshot(await response.json());
+      }
       
       const { data, error } = await supabase
         .from('topology_snapshots')
-        .insert([{
-          name,
-          description,
-          topology_data: JSON.parse(JSON.stringify(topology)),
-          drawio_xml: drawioXml,
-        }])
+        .insert([snapshotData])
         .select()
         .single();
       
@@ -167,7 +212,9 @@ export function useCreateManualLink() {
   
   return useMutation({
     mutationFn: async (link: Omit<TopologyLink, 'id' | 'created_at' | 'updated_at'>) => {
-      const insertData = {
+      await detectSelfHosted();
+      
+      const linkData = {
         source_device_id: link.source_device_id,
         source_interface: link.source_interface,
         target_device_id: link.target_device_id,
@@ -178,9 +225,20 @@ export function useCreateManualLink() {
         metadata: JSON.parse(JSON.stringify(link.metadata)),
       };
       
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/links`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(linkData),
+        });
+        if (!response.ok) throw new Error('Erro ao criar link');
+        return mapDatabaseLink(await response.json());
+      }
+      
       const { data, error } = await supabase
         .from('topology_links')
-        .insert([insertData])
+        .insert([linkData])
         .select()
         .single();
       
@@ -202,6 +260,17 @@ export function useDeleteLink() {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/topology/links/${id}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) throw new Error('Erro ao remover link');
+        return;
+      }
+      
       const { error } = await supabase
         .from('topology_links')
         .delete()

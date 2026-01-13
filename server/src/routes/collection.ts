@@ -106,9 +106,10 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
       // Disconnect SSH
       ssh.disconnect();
 
-      // Save neighbors to topology_neighbors table
+      // Save neighbors to topology_neighbors table and auto-create links
       if (result.lldpNeighbors && result.lldpNeighbors.length > 0) {
         for (const neighbor of result.lldpNeighbors) {
+          // Save neighbor record
           await query(
             `INSERT INTO topology_neighbors 
               (id, local_device_id, local_interface, remote_device_name, 
@@ -129,10 +130,95 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
               neighbor.remoteDeviceName,
               neighbor.remoteInterface,
               neighbor.remoteIP || null,
-              JSON.stringify(neighbor.rawData),
+              JSON.stringify(neighbor.rawData || {}),
               new Date().toISOString(),
             ]
           );
+
+          // AUTO-CREATE TOPOLOGY LINK: Try to find remote device by hostname/name or IP
+          let remoteDevice = null;
+          
+          // Search by hostname or name (case-insensitive)
+          if (neighbor.remoteDeviceName) {
+            const searchName = neighbor.remoteDeviceName.split('.')[0]; // Remove domain if present
+            remoteDevice = await queryOne<NetworkDevice>(
+              `SELECT id FROM network_devices 
+               WHERE LOWER(hostname) = LOWER($1) 
+                  OR LOWER(name) = LOWER($1)
+                  OR LOWER(hostname) LIKE LOWER($2)
+                  OR LOWER(name) LIKE LOWER($2)`,
+              [searchName, `%${searchName}%`]
+            );
+          }
+          
+          // If not found by name, try by IP
+          if (!remoteDevice && neighbor.remoteIP) {
+            remoteDevice = await queryOne<NetworkDevice>(
+              `SELECT id FROM network_devices WHERE ip_address::text = $1`,
+              [neighbor.remoteIP]
+            );
+          }
+
+          // If remote device found, create topology link
+          if (remoteDevice) {
+            const remoteDeviceId = remoteDevice.id;
+            
+            // Check if link already exists (bidirectional check)
+            const existingLink = await queryOne(
+              `SELECT id FROM topology_links 
+               WHERE (source_device_id = $1 AND target_device_id = $2)
+                  OR (source_device_id = $2 AND target_device_id = $1)`,
+              [deviceId, remoteDeviceId]
+            );
+
+            if (!existingLink) {
+              // Create new link
+              await query(
+                `INSERT INTO topology_links 
+                  (id, source_device_id, source_interface, target_device_id, 
+                   target_interface, link_type, status, metadata, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, 'discovered', 'up', $6, $7, $7)`,
+                [
+                  uuidv4(),
+                  deviceId,
+                  neighbor.localInterface,
+                  remoteDeviceId,
+                  neighbor.remoteInterface || null,
+                  JSON.stringify({ 
+                    auto_created: true, 
+                    discovery_protocol: 'lldp',
+                    remote_device_name: neighbor.remoteDeviceName 
+                  }),
+                  new Date().toISOString(),
+                ]
+              );
+              console.log(`[Topology] Auto-created link: ${device.name} -> ${neighbor.remoteDeviceName}`);
+            } else {
+              // Update existing link with latest interface info
+              await query(
+                `UPDATE topology_links 
+                 SET source_interface = COALESCE($1, source_interface),
+                     target_interface = COALESCE($2, target_interface),
+                     status = 'up',
+                     updated_at = $3
+                 WHERE id = $4`,
+                [
+                  neighbor.localInterface,
+                  neighbor.remoteInterface,
+                  new Date().toISOString(),
+                  existingLink.id,
+                ]
+              );
+            }
+
+            // Update neighbor with remote_device_id
+            await query(
+              `UPDATE topology_neighbors 
+               SET remote_device_id = $1 
+               WHERE local_device_id = $2 AND local_interface = $3 AND discovery_protocol = 'lldp'`,
+              [remoteDeviceId, deviceId, neighbor.localInterface]
+            );
+          }
         }
       }
 
