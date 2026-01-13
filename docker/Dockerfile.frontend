@@ -4,6 +4,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
+
+# Definir variáveis para ambiente self-hosted
+# VITE_API_URL vazio = usar URLs relativas (funciona com proxy nginx)
+ENV VITE_API_URL=""
+ENV VITE_SELF_HOSTED=true
+
 RUN npm run build
 
 FROM nginx:alpine

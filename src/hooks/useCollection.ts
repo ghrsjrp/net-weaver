@@ -1,24 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-
-// Verifica se estamos em ambiente self-hosted (com API local)
-const isSelfHosted = () => {
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
-    return true;
-  }
-  return false;
-};
-
-const getApiUrl = () => {
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
-  }
-  return 'http://localhost:3001';
-};
+import { detectSelfHosted, isSelfHosted, getApiUrl } from '@/lib/api/client';
 
 export interface CollectionResult {
   success: boolean;
@@ -70,10 +53,11 @@ export interface SSHTestResult {
 
 /**
  * Executa coleta via API local (self-hosted)
+ * Usa URLs relativas que funcionam com proxy nginx
  */
 async function collectViaLocalApi(deviceId: string, collectionTypes: string[]): Promise<CollectionResult> {
-  const apiUrl = getApiUrl();
-  const response = await fetch(`${apiUrl}/api/collect/${deviceId}`, {
+  const baseUrl = getApiUrl();
+  const response = await fetch(`${baseUrl}/api/collect/${deviceId}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ collectionTypes }),
@@ -172,9 +156,12 @@ async function collectViaSupabase(deviceId: string, collectionTypes: string[]): 
 export function useTestSSHConnection() {
   return useMutation({
     mutationFn: async (deviceId: string): Promise<SSHTestResult> => {
+      // Garantir que detectamos o ambiente
+      await detectSelfHosted();
+      
       if (isSelfHosted()) {
-        const apiUrl = getApiUrl();
-        const response = await fetch(`${apiUrl}/api/collect/test/${deviceId}`, {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/collect/test/${deviceId}`, {
           method: 'POST',
         });
         const data = await response.json();
@@ -225,9 +212,15 @@ export function useCollectDevice() {
       deviceId: string; 
       collectionTypes?: string[];
     }): Promise<CollectionResult> => {
+      // Garantir que detectamos o ambiente primeiro
+      await detectSelfHosted();
+      
       if (isSelfHosted()) {
+        console.log('[Collection] Usando API local (self-hosted)');
         return collectViaLocalApi(deviceId, collectionTypes);
       }
+      
+      console.log('[Collection] Usando Supabase (preview/cloud)');
       return collectViaSupabase(deviceId, collectionTypes);
     },
     onSuccess: (data) => {
@@ -265,6 +258,19 @@ export function useCollectionHistory(deviceId?: string) {
   return useQuery({
     queryKey: ['collection-history', deviceId],
     queryFn: async () => {
+      // Detectar ambiente
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const url = deviceId 
+          ? `${baseUrl}/api/collect/history?deviceId=${deviceId}`
+          : `${baseUrl}/api/collect/history`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Erro ao buscar histórico');
+        return response.json() as Promise<CollectionHistory[]>;
+      }
+      
       let query = supabase
         .from('collection_history')
         .select('*')
@@ -292,9 +298,12 @@ export function useCollectAllDevices() {
 
   return useMutation({
     mutationFn: async (deviceIds: string[]): Promise<CollectionResult[]> => {
+      // Garantir que detectamos o ambiente
+      await detectSelfHosted();
+      
       if (isSelfHosted()) {
-        const apiUrl = getApiUrl();
-        const response = await fetch(`${apiUrl}/api/collect`, {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/collect`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ deviceIds }),

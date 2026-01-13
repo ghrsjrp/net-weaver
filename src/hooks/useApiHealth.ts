@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { checkApiHealth, API_URL } from '@/lib/api/client';
+import { checkApiHealth, getApiUrl } from '@/lib/api/client';
 
 export interface ApiHealthStatus {
   isConnected: boolean;
@@ -19,7 +19,7 @@ export function useApiHealth() {
       return {
         isConnected: result.ok,
         version: result.version,
-        apiUrl: API_URL,
+        apiUrl: getApiUrl() || window.location.origin,
         error: result.error,
       };
     },

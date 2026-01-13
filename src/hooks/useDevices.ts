@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { NetworkDevice, DeviceFormData, VendorType, DeviceStatus } from '@/types/network';
 import { toast } from 'sonner';
+import { detectSelfHosted, isSelfHosted, getApiUrl } from '@/lib/api/client';
 
 // Converter dados do banco para tipo TypeScript
 function mapDatabaseDevice(data: Record<string, unknown>): NetworkDevice {
@@ -28,17 +29,43 @@ function mapDatabaseDevice(data: Record<string, unknown>): NetworkDevice {
   };
 }
 
+/**
+ * Busca dispositivos via API local
+ */
+async function fetchDevicesFromApi(): Promise<NetworkDevice[]> {
+  const baseUrl = getApiUrl();
+  const response = await fetch(`${baseUrl}/api/devices`);
+  if (!response.ok) throw new Error('Falha ao buscar dispositivos');
+  const data = await response.json();
+  return data.map((d: Record<string, unknown>) => mapDatabaseDevice(d));
+}
+
+/**
+ * Busca dispositivos via Supabase
+ */
+async function fetchDevicesFromSupabase(): Promise<NetworkDevice[]> {
+  const { data, error } = await supabase
+    .from('network_devices')
+    .select('*')
+    .order('name', { ascending: true });
+  
+  if (error) throw error;
+  return (data || []).map(d => mapDatabaseDevice(d as Record<string, unknown>));
+}
+
 export function useDevices() {
   return useQuery({
     queryKey: ['devices'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('network_devices')
-        .select('*')
-        .order('name', { ascending: true });
+      await detectSelfHosted();
       
-      if (error) throw error;
-      return (data || []).map(d => mapDatabaseDevice(d as Record<string, unknown>));
+      if (isSelfHosted()) {
+        console.log('[Devices] Buscando via API local');
+        return fetchDevicesFromApi();
+      }
+      
+      console.log('[Devices] Buscando via Supabase');
+      return fetchDevicesFromSupabase();
     },
   });
 }
@@ -47,6 +74,19 @@ export function useDevice(id: string) {
   return useQuery({
     queryKey: ['devices', id],
     queryFn: async () => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/devices/${id}`);
+        if (!response.ok) {
+          if (response.status === 404) return null;
+          throw new Error('Falha ao buscar dispositivo');
+        }
+        const data = await response.json();
+        return mapDatabaseDevice(data);
+      }
+      
       const { data, error } = await supabase
         .from('network_devices')
         .select('*')
@@ -66,23 +106,40 @@ export function useCreateDevice() {
   
   return useMutation({
     mutationFn: async (formData: DeviceFormData) => {
+      await detectSelfHosted();
+      
+      const deviceData = {
+        name: formData.name,
+        hostname: formData.hostname,
+        ip_address: formData.ip_address,
+        vendor: formData.vendor,
+        model: formData.model || null,
+        location: formData.location || null,
+        description: formData.description || null,
+        ssh_port: formData.ssh_port,
+        ssh_username: formData.ssh_username || null,
+        ssh_password_encrypted: formData.ssh_password || null,
+        status: 'unknown' as const,
+        metadata: {},
+      };
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/devices`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(deviceData),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Erro ao criar dispositivo');
+        }
+        return mapDatabaseDevice(await response.json());
+      }
+      
       const { data, error } = await supabase
         .from('network_devices')
-        .insert({
-          name: formData.name,
-          hostname: formData.hostname,
-          ip_address: formData.ip_address,
-          vendor: formData.vendor,
-          model: formData.model || null,
-          location: formData.location || null,
-          description: formData.description || null,
-          ssh_port: formData.ssh_port,
-          ssh_username: formData.ssh_username || null,
-          // Nota: senha deve ser criptografada no backend em produção
-          ssh_password_encrypted: formData.ssh_password || null,
-          status: 'unknown',
-          metadata: {},
-        })
+        .insert([deviceData])
         .select()
         .single();
       
@@ -104,6 +161,8 @@ export function useUpdateDevice() {
   
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<DeviceFormData> }) => {
+      await detectSelfHosted();
+      
       const updateData: Record<string, unknown> = {};
       
       if (data.name !== undefined) updateData.name = data.name;
@@ -116,6 +175,20 @@ export function useUpdateDevice() {
       if (data.ssh_port !== undefined) updateData.ssh_port = data.ssh_port;
       if (data.ssh_username !== undefined) updateData.ssh_username = data.ssh_username || null;
       if (data.ssh_password !== undefined) updateData.ssh_password_encrypted = data.ssh_password || null;
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/devices/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData),
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Erro ao atualizar dispositivo');
+        }
+        return mapDatabaseDevice(await response.json());
+      }
       
       const { data: result, error } = await supabase
         .from('network_devices')
@@ -142,6 +215,20 @@ export function useDeleteDevice() {
   
   return useMutation({
     mutationFn: async (id: string) => {
+      await detectSelfHosted();
+      
+      if (isSelfHosted()) {
+        const baseUrl = getApiUrl();
+        const response = await fetch(`${baseUrl}/api/devices/${id}`, {
+          method: 'DELETE',
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Erro ao remover dispositivo');
+        }
+        return;
+      }
+      
       const { error } = await supabase
         .from('network_devices')
         .delete()

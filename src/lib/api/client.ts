@@ -1,25 +1,102 @@
 /**
  * Cliente HTTP para comunicação com o backend self-hosted
- * Configurável via variáveis de ambiente
+ * Detecta automaticamente se está em ambiente Docker/self-hosted
  */
 
-// URL base da API - pode ser sobrescrita via env
-const getApiUrl = (): string => {
-  // Primeiro, verifica variável de ambiente do Vite
-  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-  
-  // Fallback para mesma origem (quando frontend e backend estão no mesmo servidor)
-  if (typeof window !== 'undefined') {
-    return window.location.origin;
-  }
-  
-  // Default para desenvolvimento local
-  return 'http://localhost:3001';
-};
+// Cache para resultado de detecção de ambiente
+let selfHostedCache: boolean | null = null;
+let apiUrlCache: string | null = null;
 
-export const API_URL = getApiUrl();
+/**
+ * Verifica se estamos em ambiente self-hosted (Docker/servidor local)
+ * Tenta detectar automaticamente baseado em:
+ * 1. Variável VITE_SELF_HOSTED definida
+ * 2. Variável VITE_API_URL definida
+ * 3. Endpoint /api/health respondendo com sucesso
+ */
+export async function detectSelfHosted(): Promise<boolean> {
+  // Retorna cache se já detectado
+  if (selfHostedCache !== null) {
+    return selfHostedCache;
+  }
+
+  // Se variável explícita definida
+  if (import.meta.env?.VITE_SELF_HOSTED === 'true') {
+    selfHostedCache = true;
+    return true;
+  }
+
+  // Se VITE_API_URL definida, é self-hosted
+  if (import.meta.env?.VITE_API_URL) {
+    selfHostedCache = true;
+    return true;
+  }
+
+  // Tentar detectar via /api/health na origem atual
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+    const response = await fetch('/api/health', {
+      method: 'GET',
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.status === 'ok') {
+        selfHostedCache = true;
+        apiUrlCache = ''; // Usar origem atual (URLs relativas)
+        console.log('[API] Ambiente self-hosted detectado via /api/health');
+        return true;
+      }
+    }
+  } catch {
+    // Ignorar erros de conexão
+  }
+
+  // Não é self-hosted, usar Supabase
+  selfHostedCache = false;
+  return false;
+}
+
+/**
+ * Retorna a URL base da API
+ * Em self-hosted retorna '' para usar URLs relativas
+ */
+export function getApiUrl(): string {
+  if (apiUrlCache !== null) {
+    return apiUrlCache;
+  }
+
+  // Se VITE_API_URL definida, usar ela
+  if (import.meta.env?.VITE_API_URL) {
+    apiUrlCache = import.meta.env.VITE_API_URL;
+    return apiUrlCache;
+  }
+
+  // Default: URLs relativas (funciona com proxy nginx)
+  apiUrlCache = '';
+  return '';
+}
+
+/**
+ * Verifica se é self-hosted de forma síncrona
+ * Retorna o cache ou false se ainda não detectado
+ */
+export function isSelfHosted(): boolean {
+  return selfHostedCache === true;
+}
+
+/**
+ * Força re-detecção do ambiente
+ */
+export function resetEnvironmentCache(): void {
+  selfHostedCache = null;
+  apiUrlCache = null;
+}
 
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   body?: unknown;
@@ -40,7 +117,8 @@ export async function apiRequest<T>(
 ): Promise<ApiResponse<T>> {
   const { body, headers, ...restOptions } = options;
 
-  const url = `${API_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const baseUrl = getApiUrl();
+  const url = `${baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   try {
     const response = await fetch(url, {
@@ -100,7 +178,7 @@ export const api = {
  */
 export async function checkApiHealth(): Promise<{ ok: boolean; version?: string; error?: string }> {
   try {
-    const response = await api.get<{ status: string; version: string }>('/health');
+    const response = await api.get<{ status: string; version: string }>('/api/health');
     if (response.success && response.data?.status === 'ok') {
       return { ok: true, version: response.data.version };
     }
