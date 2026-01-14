@@ -107,37 +107,47 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
       ssh.disconnect();
 
       // Save neighbors to topology_neighbors table and auto-create links
+      const normalizeInet = (value?: string | null) => {
+        if (!value) return null;
+        const v = String(value).trim();
+        return v.length ? v : null;
+      };
+
+      const toJsonb = (value: unknown) => JSON.stringify(value ?? {});
+
       if (result.lldpNeighbors && result.lldpNeighbors.length > 0) {
         for (const neighbor of result.lldpNeighbors) {
-          // Save neighbor record
+          const remoteIp = normalizeInet(neighbor.remoteIP);
+          const rawData = toJsonb(neighbor.rawData);
+
+          // Save neighbor record (explicit casts avoid pg parameter inference issues)
           await query(
             `INSERT INTO topology_neighbors 
               (id, local_device_id, local_interface, remote_device_name, 
                remote_interface, remote_ip, discovery_protocol, raw_data, 
                discovered_at, last_updated)
-             VALUES ($1, $2, $3, $4, $5, $6, 'lldp', $7, $8, $8)
+             VALUES ($1, $2, $3, $4, $5, $6::inet, 'lldp', $7::jsonb, NOW(), NOW())
              ON CONFLICT (local_device_id, local_interface, discovery_protocol) 
              DO UPDATE SET 
                remote_device_name = EXCLUDED.remote_device_name,
                remote_interface = EXCLUDED.remote_interface,
                remote_ip = EXCLUDED.remote_ip,
                raw_data = EXCLUDED.raw_data,
-               last_updated = EXCLUDED.last_updated`,
+               last_updated = NOW()`,
             [
               uuidv4(),
               deviceId,
               neighbor.localInterface,
               neighbor.remoteDeviceName,
               neighbor.remoteInterface,
-              neighbor.remoteIP || null,
-              JSON.stringify(neighbor.rawData || {}),
-              new Date().toISOString(),
+              remoteIp,
+              rawData,
             ]
           );
 
           // AUTO-CREATE TOPOLOGY LINK: Try to find remote device by hostname/name or IP
           let remoteDevice = null;
-          
+
           // Search by hostname or name (case-insensitive)
           if (neighbor.remoteDeviceName) {
             const searchName = neighbor.remoteDeviceName.split('.')[0]; // Remove domain if present
@@ -150,19 +160,19 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
               [searchName, `%${searchName}%`]
             );
           }
-          
+
           // If not found by name, try by IP
-          if (!remoteDevice && neighbor.remoteIP) {
+          if (!remoteDevice && remoteIp) {
             remoteDevice = await queryOne<NetworkDevice>(
               `SELECT id FROM network_devices WHERE ip_address::text = $1`,
-              [neighbor.remoteIP]
+              [remoteIp]
             );
           }
 
           // If remote device found, create topology link
           if (remoteDevice) {
             const remoteDeviceId = remoteDevice.id;
-            
+
             // Check if link already exists (bidirectional check)
             const existingLink = await queryOne(
               `SELECT id FROM topology_links 
@@ -172,24 +182,25 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
             );
 
             if (!existingLink) {
+              const metadata = JSON.stringify({
+                auto_created: true,
+                discovery_protocol: 'lldp',
+                remote_device_name: neighbor.remoteDeviceName,
+              });
+
               // Create new link
               await query(
                 `INSERT INTO topology_links 
                   (id, source_device_id, source_interface, target_device_id, 
                    target_interface, link_type, status, metadata, created_at, updated_at)
-                 VALUES ($1, $2, $3, $4, $5, 'discovered', 'up', $6, $7, $7)`,
+                 VALUES ($1, $2, $3, $4, $5, 'discovered', 'up', $6::jsonb, NOW(), NOW())`,
                 [
                   uuidv4(),
                   deviceId,
                   neighbor.localInterface,
                   remoteDeviceId,
                   neighbor.remoteInterface || null,
-                  JSON.stringify({ 
-                    auto_created: true, 
-                    discovery_protocol: 'lldp',
-                    remote_device_name: neighbor.remoteDeviceName 
-                  }),
-                  new Date().toISOString(),
+                  metadata,
                 ]
               );
               console.log(`[Topology] Auto-created link: ${device.name} -> ${neighbor.remoteDeviceName}`);
@@ -200,14 +211,9 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
                  SET source_interface = COALESCE($1, source_interface),
                      target_interface = COALESCE($2, target_interface),
                      status = 'up',
-                     updated_at = $3
-                 WHERE id = $4`,
-                [
-                  neighbor.localInterface,
-                  neighbor.remoteInterface,
-                  new Date().toISOString(),
-                  existingLink.id,
-                ]
+                     updated_at = NOW()
+                 WHERE id = $3`,
+                [neighbor.localInterface, neighbor.remoteInterface, existingLink.id]
               );
             }
 
@@ -225,28 +231,30 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
       // Save OSPF neighbors
       if (result.ospfNeighbors && result.ospfNeighbors.length > 0) {
         for (const neighbor of result.ospfNeighbors) {
+          const remoteIp = normalizeInet(neighbor.neighborIP);
+          const rawData = toJsonb(neighbor.rawData);
+
           await query(
             `INSERT INTO topology_neighbors 
               (id, local_device_id, local_interface, remote_device_name, 
                remote_interface, remote_ip, discovery_protocol, raw_data, 
                discovered_at, last_updated)
-             VALUES ($1, $2, $3, $4, $5, $6, 'ospf', $7, $8, $8)
+             VALUES ($1, $2, $3, $4, $5, $6::inet, 'ospf', $7::jsonb, NOW(), NOW())
              ON CONFLICT (local_device_id, local_interface, discovery_protocol) 
              DO UPDATE SET 
                remote_device_name = EXCLUDED.remote_device_name,
                remote_interface = EXCLUDED.remote_interface,
                remote_ip = EXCLUDED.remote_ip,
                raw_data = EXCLUDED.raw_data,
-               last_updated = EXCLUDED.last_updated`,
+               last_updated = NOW()`,
             [
               uuidv4(),
               deviceId,
               neighbor.interface,
               neighbor.neighborId,
-              '',
-              neighbor.neighborIP,
-              JSON.stringify(neighbor.rawData),
-              new Date().toISOString(),
+              null,
+              remoteIp,
+              rawData,
             ]
           );
         }

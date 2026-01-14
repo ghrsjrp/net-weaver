@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { testConnection } from './config/database';
+import { validateSchema } from './config/schema';
 import devicesRouter from './routes/devices';
 import collectionRouter from './routes/collection';
 import topologyRouter from './routes/topology';
@@ -72,6 +73,15 @@ async function start() {
   const dbConnected = await testConnection();
   if (!dbConnected) {
     console.error('Failed to connect to database. Exiting...');
+    process.exit(1);
+  }
+
+  // Validate schema (fail fast with a clear error)
+  try {
+    await validateSchema();
+    console.log('✓ Database schema validation successful');
+  } catch (err: any) {
+    console.error('✗ Database schema validation failed:', err?.message || err);
     process.exit(1);
   }
 
