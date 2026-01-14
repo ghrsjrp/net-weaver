@@ -34,14 +34,45 @@ export async function testConnection(): Promise<boolean> {
   }
 }
 
+function summarizeParams(params?: any[]) {
+  if (!params) return [];
+  return params.map((p, idx) => {
+    const base = {
+      index: idx + 1,
+      type:
+        p === null
+          ? 'null'
+          : p instanceof Date
+            ? 'Date'
+            : Array.isArray(p)
+              ? 'Array'
+              : typeof p,
+    } as any;
+
+    // Avoid logging sensitive values (like SSH passwords). Only log lengths.
+    if (typeof p === 'string') return { ...base, length: p.length };
+    if (Array.isArray(p)) return { ...base, length: p.length };
+    return base;
+  });
+}
+
 export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
-  const result = await pool.query(text, params);
-  return result.rows as T[];
+  try {
+    const result = await pool.query(text, params);
+    return result.rows as T[];
+  } catch (error) {
+    console.error('[DB] Query failed:', {
+      text,
+      params: summarizeParams(params),
+    });
+    console.error('[DB] Error:', error);
+    throw error;
+  }
 }
 
 export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
-  const result = await pool.query(text, params);
-  return result.rows[0] as T || null;
+  const rows = await query<T>(text, params);
+  return rows[0] as T || null;
 }
 
 export default pool;
