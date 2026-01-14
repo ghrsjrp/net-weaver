@@ -64,11 +64,42 @@ export interface TopologyLink {
   target_device_id: string;
   target_interface?: string;
   link_type: string;
-  bandwidth_mbps?: number;
+  bandwidth_mbps?: number | null;
   status: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+// Topology visualization types - used by API responses
+export interface TopologyNode {
+  id: string;
+  label: string;
+  device: NetworkDevice;
+  x?: number;
+  y?: number;
+  color?: string;
+  size?: number;
+}
+
+export interface TopologyEdge {
+  id: string;
+  source: string;
+  target: string;
+  sourceInterface?: string;
+  targetInterface?: string;
+  bandwidth?: number | null; // Made optional to prevent TS errors
+  status: string;
+}
+
+export interface TopologyData {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+  metadata?: {
+    generatedAt: string;
+    deviceCount: number;
+    linkCount: number;
+  };
 }
 
 export interface CollectionHistory {

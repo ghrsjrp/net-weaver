@@ -174,6 +174,7 @@ router.get('/data', async (req: Request, res: Response) => {
           target: neighbor.remote_device_id,
           sourceInterface: neighbor.local_interface,
           targetInterface: neighbor.remote_interface,
+          bandwidth: null,
           status: 'discovered',
           type: 'neighbor',
         });
