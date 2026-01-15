@@ -224,7 +224,7 @@ router.post('/snapshots', async (req: Request, res: Response) => {
     const result = await query(
       `INSERT INTO topology_snapshots 
         (id, name, description, topology_data, drawio_xml, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6)
        RETURNING *`,
       [
         id, name, description || null,
@@ -310,7 +310,7 @@ router.post('/auto-links', async (req: Request, res: Response) => {
           `INSERT INTO topology_links 
             (id, source_device_id, target_device_id, source_interface, 
              target_interface, link_type, status, metadata, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, 'discovered', 'up', $6, $7, $7)`,
+           VALUES ($1, $2, $3, $4, $5, 'discovered', 'up', $6::jsonb, $7, $7)`,
           [
             uuidv4(),
             neighbor.local_device_id,
