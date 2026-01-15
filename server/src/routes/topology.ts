@@ -78,11 +78,11 @@ router.post('/links', async (req: Request, res: Response) => {
         (id, source_device_id, target_device_id, source_interface, 
          target_interface, link_type, bandwidth_mbps, status, 
          metadata, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'up', $8, $9, $9)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'up', $8::jsonb, $9, $9)
        RETURNING *`,
       [
         id, source_device_id, target_device_id, source_interface,
-        target_interface, link_type, bandwidth_mbps,
+        target_interface, link_type, bandwidth_mbps ?? null,
         JSON.stringify({}), now
       ]
     );

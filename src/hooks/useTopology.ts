@@ -15,13 +15,14 @@ function mapDatabaseLink(data: Record<string, unknown>): TopologyLink {
     target_device_id: data.target_device_id as string,
     target_interface: data.target_interface as string | undefined,
     link_type: (data.link_type as string) || 'physical',
-    bandwidth_mbps: data.bandwidth_mbps as number | undefined,
+    bandwidth_mbps: (data.bandwidth_mbps as number | null | undefined) ?? null,
     status: (data.status as string) || 'up',
     metadata: (data.metadata as Record<string, unknown>) || {},
     created_at: data.created_at as string,
     updated_at: data.updated_at as string,
   };
 }
+
 
 function mapDatabaseNeighbor(data: Record<string, unknown>): TopologyNeighbor {
   return {

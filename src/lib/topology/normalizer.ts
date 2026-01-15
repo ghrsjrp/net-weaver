@@ -29,10 +29,11 @@ export function linksToEdges(links: TopologyLink[]): TopologyEdge[] {
     target: link.target_device_id,
     sourceInterface: link.source_interface,
     targetInterface: link.target_interface,
-    bandwidth: link.bandwidth_mbps,
+    bandwidth: link.bandwidth_mbps ?? null,
     status: link.status,
   }));
 }
+
 
 /**
  * Converte vizinhos descobertos em links de topologia

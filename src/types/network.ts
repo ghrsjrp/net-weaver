@@ -64,12 +64,13 @@ export interface TopologyLink {
   target_device_id: string;
   target_interface?: string;
   link_type: string;
-  bandwidth_mbps?: number;
+  bandwidth_mbps?: number | null;
   status: string;
   metadata: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 }
+
 
 export interface CollectionHistory {
   id: string;
@@ -119,9 +120,10 @@ export interface TopologyEdge {
   target: string;
   sourceInterface?: string;
   targetInterface?: string;
-  bandwidth?: number;
+  bandwidth: number | null;
   status: string;
 }
+
 
 export interface TopologyData {
   nodes: TopologyNode[];
