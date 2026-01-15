@@ -88,9 +88,11 @@ export interface TopologyEdge {
   target: string;
   sourceInterface?: string;
   targetInterface?: string;
-  bandwidth?: number | null; // Made optional to prevent TS errors
+  // LLDP/CDP normalmente não informam banda; padronizamos como null quando desconhecido.
+  bandwidth: number | null;
   status: string;
 }
+
 
 export interface TopologyData {
   nodes: TopologyNode[];
