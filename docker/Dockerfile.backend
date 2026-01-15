@@ -3,8 +3,8 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install deps (including dev deps for TypeScript build)
-COPY server/package*.json ./
-RUN npm ci
+COPY server/package.json ./
+RUN npm install
 
 # Copy backend source and build
 COPY server/ ./
@@ -17,8 +17,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Install only production deps
-COPY server/package*.json ./
-RUN npm ci --omit=dev
+COPY server/package.json ./
+RUN npm install --omit=dev
 
 # Copy compiled output
 COPY --from=builder /app/dist ./dist
