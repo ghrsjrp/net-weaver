@@ -327,7 +327,7 @@ router.post('/:deviceId', async (req: Request, res: Response) => {
          SET status = 'completed', 
              completed_at = $1,
              raw_output = $2,
-             parsed_data = $3
+             parsed_data = $3::jsonb
          WHERE id = $4`,
         [
           new Date().toISOString(),
