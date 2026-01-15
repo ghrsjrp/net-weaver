@@ -33,13 +33,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-  });
+// Health check (used by Docker healthcheck and frontend self-hosted detection)
+const getHealthPayload = () => ({
+  status: 'ok',
+  timestamp: new Date().toISOString(),
+  version: '1.0.0',
+});
+
+app.get(['/health', '/api/health'], (req, res) => {
+  res.json(getHealthPayload());
 });
 
 // API Routes

@@ -68,7 +68,7 @@ router.post('/', async (req: Request, res: Response) => {
         (id, name, hostname, ip_address, vendor, model, location, description, 
          ssh_port, ssh_username, ssh_password_encrypted, status, 
          management_ip, metadata, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14::jsonb, $15, $16)
+       VALUES ($1, $2, $3, $4::inet, $5, $6, $7, $8, $9, $10, $11, $12, $13::inet, $14::jsonb, $15, $16)
        RETURNING *`,
       [
         id, name, hostname, ip_address, vendor, model, location, description,

@@ -1,73 +1,51 @@
-# Welcome to your Lovable project
+# NetTopo (Self-Hosted)
 
-## Project info
+NetTopo é um sistema **100% local** para descoberta e visualização de topologia de rede (LLDP/OSPF) para provedores/ISPs.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Subir com Docker (do zero)
 
-## How can I edit this code?
+Pré-requisitos:
+- Docker + Docker Compose (plugin `docker compose`)
 
-There are several ways of editing your application.
+Na raiz do repositório:
 
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```bash
+docker compose build
+docker compose up
 ```
 
-**Edit a file directly in GitHub**
+Acesso:
+- Frontend: `http://localhost/`
+- Backend healthcheck: `http://localhost/api/health`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Como funciona (arquitetura)
 
-**Use GitHub Codespaces**
+- **PostgreSQL**: persiste dispositivos, vizinhos, links e histórico de coletas.
+- **Backend (Node/TypeScript)**: expõe a API REST em `/api/*`.
+- **Frontend (Vite + Nginx)**: SPA servida pelo Nginx com proxy `/api/*` para o backend.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Reset completo (apagar dados)
 
-## What technologies are used for this project?
+Se você quer recriar o banco do zero (incluindo tabelas):
 
-This project is built with:
+```bash
+docker compose down -v
+docker compose up --build
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## Configuração
 
-## How can I deploy this project?
+Você pode definir a senha do banco via variável:
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+```bash
+export DB_PASSWORD='minha_senha_forte'
+docker compose up --build
+```
 
-## Can I connect a custom domain to my Lovable project?
+## Troubleshooting rápido
 
-Yes, you can!
+- **"relation ... does not exist" / tabelas ausentes**: o volume antigo do Postgres pode ter sido reaproveitado.
+  Rode `docker compose down -v` para recriar.
+- **Frontend não conecta no backend**: valide `GET http://localhost/api/health`.
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)

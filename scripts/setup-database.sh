@@ -1,13 +1,25 @@
-#!/bin/bash
-# NetTopo Database Setup Script
+#!/bin/sh
+# NetTopo Database Setup Script (self-hosted)
+# - Runs automatically inside the Postgres container on first start
+# - Can also be executed manually: ./scripts/setup-database.sh <user> <password> <db>
 
-DB_USER=${1:-nettopo}
-DB_PASSWORD=${2:-nettopo}
-DB_NAME=${3:-nettopo}
+set -eu
+
+DB_USER="${1:-${POSTGRES_USER:-nettopo}}"
+DB_PASSWORD="${2:-${POSTGRES_PASSWORD:-nettopo_secure_password}}"
+DB_NAME="${3:-${POSTGRES_DB:-nettopo}}"
 
 echo "Setting up database schema..."
+echo " - DB: ${DB_NAME}"
+echo " - User: ${DB_USER}"
 
-PGPASSWORD=$DB_PASSWORD psql -h localhost -U $DB_USER -d $DB_NAME << 'EOSQL'
+# Needed only when connecting via TCP; harmless for local socket usage.
+export PGPASSWORD="${DB_PASSWORD}"
+
+psql -v ON_ERROR_STOP=1 -U "${DB_USER}" -d "${DB_NAME}" <<'EOSQL'
+
+-- Required for gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Create enums
 DO $$ BEGIN
@@ -91,6 +103,7 @@ CREATE TABLE IF NOT EXISTS topology_links (
     target_device_id UUID NOT NULL REFERENCES network_devices(id) ON DELETE CASCADE,
     target_interface VARCHAR(255),
     link_type VARCHAR(50) DEFAULT 'physical',
+    -- LLDP normalmente não traz banda; manter NULL quando desconhecido.
     bandwidth_mbps INTEGER,
     status VARCHAR(50) DEFAULT 'up',
     metadata JSONB DEFAULT '{}',
